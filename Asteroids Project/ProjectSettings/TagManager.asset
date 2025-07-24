@@ -1,0 +1,56 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!78 &1
+TagManager:
+  serializedVersion: 2
+  tags:
+  - Bullet
+  - Asteroid
+  - Alien
+  - AlienBullet
+  - Mothership
+  - Missile
+  - Boundary
+  layers:
+  - Default
+  - TransparentFX
+  - Ignore Raycast
+  - 
+  - Water
+  - UI
+  - Player
+  - Bullet
+  - Asteroid
+  - Boundary
+  - Invincible
+  - InvincibleAst
+  - Alien
+  - AlienBullet
+  - Mothership
+  - InvincibleGame
+  - Missile
+  - 
+  - 
+  - 
+  - 
+  - 
+  - 
+  - 
+  - 
+  - 
+  - 
+  - 
+  - 
+  - 
+  - 
+  - 
+  m_SortingLayers:
+  - name: Default
+    uniqueID: 0
+    locked: 0
+  - name: UI
+    uniqueID: 3501802315
+    locked: 0
+  - name: Everything
+    uniqueID: 2966811227
+    locked: 0

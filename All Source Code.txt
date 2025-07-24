@@ -1,0 +1,1292 @@
+////////////////////////////////////// GAME MANAGER . CS ////////////////////////////////////////////////////
+
+
+
+//Sam Nuttall Asteroids
+//the game manager is what is in charge of the overall state of the game, including score/lives etc.
+using UnityEngine;
+using UnityEngine.UI;
+
+public class GameManager : MonoBehaviour {
+
+    //initialising particle explosions.
+    public ParticleSystem explosion;
+    public ParticleSystem explosion2;
+
+    //initialising prefabs and spawners scripts
+    public MothershipSpawn MothershipSpawn;
+    public AlienSpawner alienSpawner;
+    public Player player;
+    public AlienAI AlienAI;
+    public MothershipSpawn Mothership;
+    public Rockets missiles;
+    
+    
+
+    //the following lines are used for boolean conditionals to run functions. they are changed to 1 and 0 throughout code.
+    public int swarmMode = 0;
+    public int aliensComing = 0;
+    public int alienAlerted = 0;
+    public int aliensKilled = 0;
+    public int mothershipGame = 0;
+    private int increased2;
+    private int increased3;
+    public float respawnTime = 3.0f;
+    public float respawnInvincibilityTime = 3.0f;
+
+    //the following are all UI overlays, mainly text objects which are changed throughout code / displayed and hidden.
+    public GameObject gameOverUI;
+    public GameObject diffIncreaseUI;
+    public GameObject alienAlertUI;
+    public GameObject mothershipAlertUI;
+    public GameObject mothershipHealth;
+    public GameObject aliensFoundYouUI;
+    public GameObject mothershipWonUI;
+
+    //these are getter and setter methods for values and text objects which can be changed and displayed on the game.
+    public int mothershipHealthValue { get; private set; }
+    public Text mothershipHealthText;
+    public int score { get; private set; }
+    public Text scoreText;
+    public int lives { get; private set; }
+    public Text livesText;
+
+    //initialising highscore which is a persistantly stored/fetched on every run variable.
+    public int highScore;
+    public Text highScoreText;
+
+    //another conditional variable which will change depending on the difficulty level. depending on the value of this different methods will run.
+    public int difficultyLevel;
+    public Text difficultyText;
+
+    //initialising audio sources used in the game, each linked on the unity project panel.
+    public AudioSource difficultySound;
+    public AudioSource gameOverSound;
+    public AudioSource alienHit;
+    public AudioSource alienDeath;
+    public AudioSource mothershipSpawning;
+    public AudioSource aliensFound;
+    public AudioSource mothershipExploding;
+    public AudioSource deathSound;
+    public AudioSource beeping;
+    public AudioSource missileShot;
+    public AudioSource beamShot;
+    
+
+
+
+    //start function, when the game first starts the highscore is fetched and displayed and the difficulty is set to 1 initially. then the newGame function is ran in order to start the game
+    private void Start() {
+        this.highScore = PlayerPrefs.GetInt("hs");
+        highScoreText.text = this.highScore.ToString();
+        this.difficultyLevel = 1;
+        difficultyText.text = this.difficultyLevel.ToString();
+        NewGame();
+    }
+
+
+
+
+
+    private void Update(){
+//IF THE USER IS DEAD AND THEY PRESS RETURN THEN A NEW GAME WILL BEGIN.
+        if (lives <= 0 && Input.GetKeyDown(KeyCode.Return)) {
+            NewGame();
+        }
+//IF THE USER PRESSES 'H' KEY THEN THE PERSISTANT STORAGE OF THE HIGH SCORE WILL BE RESET BACK TO 0 AND THE SCREEN UI WILL UPDATE TO SHOW THIS.
+        if (Input.GetKey(KeyCode.H)){
+            PlayerPrefs.SetInt("hs", 0);
+            this.highScore = PlayerPrefs.GetInt("hs");
+            highScoreText.text = highScore.ToString();
+        }
+//IF SCORE IS OVER 49(50+) THEN THE INITIAL ALIENS WILL START TO SPAWN IN, AUDIO EFFECTS AND UI ELEMENTS ARE PLAYED AND SHOWN TO THE USER.
+        if (this.score >= 49) {
+            if (aliensComing == 0){
+                aliensComing = 1;
+                aliensFound.Play();
+                Invoke(nameof(aliensFoundOn), 0);
+                Invoke(nameof(aliensFoundOff), 3);
+                Invoke(nameof(spawnAlien), 5);
+            }
+        }
+//IF SCORE IS OVER 149(150+) THEN THE SWARM MODE WILL ACTIVATE, SPAWNING 4 ALIENS AT A TIME INSTEAD OF 1. FIRSTLY ALL ALIENS ARE REMOVED FROM THE GAME IN ORDER TO MAKE SPACE FOR NEW ONES.
+        if (this.score > 149 && this.alienAlerted != 1) {
+            CancelInvoke();
+            AlienAI[] aliens = FindObjectsOfType<AlienAI>();
+            for (int i = 0; i < aliens.Length; i++) {
+                Destroy(aliens[i].gameObject);
+            }
+            swarmMode = 1;
+            this.alienAlerted = 1;
+            Invoke(nameof(alienAlertOn), 0);
+            Invoke(nameof(alienAlertOff), 3);
+            Invoke(nameof(spawnAlien), 13);
+            Invoke(nameof(spawnAlien), 13);
+            Invoke(nameof(spawnAlien), 13);
+            Invoke(nameof(spawnAlien), 13);
+        }
+
+//IF SCORE IS OVER 199 (200+) THEN THE ASTEROIDS WILL SPAWN AT DIFFICULTY LEVEL 2 (more spawn at once, and they spawn more frequently.) A sound effect plays and a UI pop up lets the user know their level up status.
+        if (this.score > 199 && this.increased2 != 1){
+            this.increased2 = 1;
+            this.difficultyLevel = 2;
+            difficultyText.text = this.difficultyLevel.ToString();
+            difficultySound.Play(0);
+            Invoke(nameof(diffIncOn), 0);
+            Invoke(nameof(diffIncOff), 2);
+        }
+
+//IF SCORE IS OVER 299(300+) THEN THE MOTHERSHIP MINIGAME WILL START.
+        if (this.score > 299 && this.mothershipGame == 0){
+            CancelInvoke();
+            mothershipGame = 1;
+            aliensKilled = 0;
+            Invoke(nameof(CollisionsOffGame), 0);
+            Invoke(nameof(mothershipGameOn), 0);
+        }
+        //When mothership game is active all aliens and asteroids are killed and they stop spawning until the minigame is done.
+        if (mothershipGame == 1){
+            AlienAI[] aliens = FindObjectsOfType<AlienAI>();
+            for (int i = 0; i < aliens.Length; i++) {
+                Destroy(aliens[i].gameObject);
+            }
+            Asteroid[] asteroids = FindObjectsOfType<Asteroid>();
+            for (int i = 0; i < asteroids.Length; i++) {
+                Destroy(asteroids[i].gameObject);
+            }
+            
+        }
+
+//IF THE SCORE IS OVER 749(750+) THEN THE ASTEROID SPAWN IN AT DIFFICULTY LEVEL 3, WHICH IS THE HARDEST IN MY IMPLEMENTATION. again a sound effect and the UI pop ups let the user know their level.
+        if (this.score > 749 && this.increased3 != 1){
+            this.increased3 = 1;
+            this.difficultyLevel = 3;
+            difficultyText.text = this.difficultyLevel.ToString();
+            difficultySound.Play(0);
+            Invoke(nameof(diffIncOn), 0);
+            Invoke(nameof(diffIncOff), 2);
+        }      
+    }
+
+    
+
+
+    //method for setting the score of the user, this is constantly updated and displayed to the user, it also changes the high score (and persistant storage of it) if this is reached.
+    public void SetScore(int score){
+        this.score = score;
+        scoreText.text = score.ToString();
+        
+        if (this.score > this.highScore){
+            PlayerPrefs.SetInt("hs", this.score);
+        }
+
+        this.highScore = PlayerPrefs.GetInt("hs");
+        highScoreText.text = highScore.ToString();
+    }
+
+    //method to set the lives of the user on the UI which displays it. this is constantly updated whenever there is a change.
+    private void SetLives(int lives){
+        this.lives = lives;
+        livesText.text = lives.ToString();
+    }
+
+
+
+
+
+//START OF MOTHERSHIP RELATED METHODS.
+    //mothership UI alerts and sounds are played and the spawning methods are invoked.
+    private void mothershipGameOn(){
+        alienBullet[] alienBullets = FindObjectsOfType<alienBullet>();
+        for (int i = 0; i < alienBullets.Length; i++) {
+            Destroy(alienBullets[i].gameObject);
+        }
+        mothershipSpawning.Play();
+        SetMothershipHealth(100);
+        Invoke(nameof(mothershipAlertOn), 0);
+        Invoke(nameof(mothershipAlertOff), 5);
+        Invoke(nameof(spawnMothership), 6);
+    }
+    //spawning method for the mothership, runs a method that instantiates it with certain variables.
+    private void spawnMothership(){ MothershipSpawn.Spawn(); }
+
+    //changes the motherships health as the user damages it. and displays this to the user in the UI.
+    private void SetMothershipHealth(int mothershipHealthValue){
+        this.mothershipHealthValue = mothershipHealthValue;
+        mothershipHealthText.text = mothershipHealthValue.ToString();
+    }
+
+    //each time the mothership is hit, the setMothershipHealth method is ran with the input of 100-mothershipHits, which is the remaining life of it.
+    public void mothershipHits(int mothershipHits){ SetMothershipHealth(100-mothershipHits); }
+
+    //method that runs when the mothership dies, it plays the custom explosion particle effects on the motherships location and plays the death sound. the game settings are reverted back to normal play, and the score is updated. some alien spawns are invoked so that the game can resume
+    public void mothershipDied(Mothership Mothership){
+        explosion2.transform.position = Mothership.transform.position;
+        this.mothershipExploding.Play();
+        explosion2.Play();
+
+        this.mothershipGame = 2;
+        this.swarmMode = 1;
+        this.aliensKilled = 0;
+
+        Invoke(nameof(mothershipWonOn), 0);
+        Invoke(nameof(mothershipWonOff), 3);
+
+        Invoke(nameof(CollisionsOn), 3);
+
+        SetScore((score + 100));
+
+        mothershipHealth.SetActive(false);
+        mothershipHealthText.text = " ";
+
+        Invoke(nameof(spawnAlien), 10);
+        Invoke(nameof(spawnAlien), 10);
+        Invoke(nameof(spawnAlien), 10);
+        Invoke(nameof(spawnAlien), 10);
+    }
+
+    public void missilesExplode(Rockets missiles){
+        explosion.transform.position = missiles.transform.position;
+        explosion.Play();
+        deathSound.Play();
+        Destroy(missiles.gameObject);
+    }
+//END OF MOTHERSHIP RELATED CODE
+
+
+
+
+    //method runs when an asteroid is shot by the user. plays an explosion particle effect on the asteroids location, and adds score depending on the size of the asteroid.
+    public void asteroidDead(Asteroid asteroid){
+        this.explosion.transform.position = asteroid.transform.position;
+        this.explosion.Play();
+        //Scoring
+        //smallest asteroids = 3 points as hard to hit,
+        //mid asteroids = 2 points
+        //large asteroids = 1 point
+        if (asteroid.size < 0.45f) { 
+            SetScore((score + 3));
+        }else if (asteroid.size < 0.65f && asteroid.size >= 0.45f){ 
+            SetScore((score + 2));
+        }else{
+            SetScore((score + 1));
+        }
+    }
+
+    //method runs when an alien is killed by the user, it changes the tally of aliens killed and plays an explosion effect on the aliens location, aswell as death SFX. score is changed and more aliens are spawned, depending whether its swarm mode or not depends on the new amount of alienSpawns invoked.
+    public void alienDead(AlienAI alien){
+        this.aliensKilled += 1;
+        this.explosion.transform.position = alien.transform.position;
+        this.explosion.Play();
+        this.alienDeath.Play();
+        this.deathSound.Play(0);
+         SetScore((score + 25));
+
+        if (swarmMode == 0 && aliensKilled > 0 && aliensKilled < 4 && mothershipGame != 1) {
+            aliensKilled = 0;
+            Invoke(nameof(spawnAlien), 5);
+        }
+        if (swarmMode == 1 && aliensKilled >= 4 && mothershipGame != 1) {
+            aliensKilled = 0;
+            Invoke(nameof(spawnAlien), 10);
+            Invoke(nameof(spawnAlien), 10);
+            Invoke(nameof(spawnAlien), 10);
+            Invoke(nameof(spawnAlien), 10);
+        }       
+    }
+
+    //method runs when the player dies, the death sound and explosion are played on the players death location and all the bullets are deleted in the world if the lives count is 0. lives are decremented down when the player dies, they initially have 3.
+    public void playerDead(){
+        this.explosion.transform.position = this.player.transform.position;
+        this.explosion.Play();
+
+        SetLives(lives - 1);
+
+        //if the players lives reach 0 then all the bullets are removed and invokes are cancelled. the game over screen is then displayed. otherwise, if they have lives left then the respawn method is ran.
+        if (this.lives <= 0){
+            Bullet[] bullets = FindObjectsOfType<Bullet>();
+            for (int i = 0; i < bullets.Length; i++) {
+                Destroy(bullets[i].gameObject);
+            }
+            mothershipHealth.SetActive(false);
+            mothershipHealthText.text = " ";
+            CancelInvoke();
+            GameOver();
+        }else{
+            Invoke(nameof(Respawn), this.respawnTime);
+        }
+
+        Rockets[] rockets = FindObjectsOfType<Rockets>();
+        for (int i = 0; i < rockets.Length; i++) {
+            Destroy(rockets[i].gameObject);
+        }
+    }
+
+
+
+
+    //respawn method which is ran if the user dies and has lives remaining. moves player back the center of screen and gives a grace period where collisions are off.
+    private void Respawn(){
+        this.player.transform.position = Vector3.zero;
+        Invoke(nameof(CollisionsOff), 0);
+        this.player.gameObject.SetActive(true);
+        Invoke(nameof(CollisionsOn), this.respawnInvincibilityTime);
+    }
+    //gameOver method runs if the player dies with no lives remaining. turns all UI alerts off and stops all invoked methods from running. gameOver SFX are played and all settings are reverted back to default. if the user wants they can press Return as instructed to start a new game.
+    private void GameOver(){
+        mothershipAlertOff();
+        alienAlertOff();
+        diffIncOff();
+        CancelInvoke();
+        
+        gameOverSound.Play(0);
+        gameOverUI.SetActive(true);
+        swarmMode = 0;
+        aliensKilled = 0;
+    }
+    //newGame method can be ran after the gameOver if the user wants to play again, destroys all asteroids, aliens and motherships that may still be in the field. resets lives and score and the difficulty level and then reinitialises the game and respawns the user with the Respawn() method.
+    public void NewGame(){
+        Asteroid[] asteroids = FindObjectsOfType<Asteroid>();
+        AlienAI[] aliens = FindObjectsOfType<AlienAI>();
+        Mothership[] theMothership = FindObjectsOfType<Mothership>();
+        for (int i = 0; i < asteroids.Length; i++) { Destroy(asteroids[i].gameObject); }
+        for (int i = 0; i < aliens.Length; i++) { Destroy(aliens[i].gameObject); }
+        for (int i = 0; i < theMothership.Length; i++) { Destroy(theMothership[i].gameObject); }
+
+        gameOverUI.SetActive(false);
+
+        SetScore(0);
+        SetLives(3);
+
+        this.increased2 = 0;
+        this.increased3 = 0;
+        this.difficultyLevel = 1;
+        difficultyText.text = "1";
+        alienAlerted = 0;
+        mothershipGame = 0;
+        aliensComing = 0;
+        
+        Respawn();
+    }
+
+
+
+
+
+    public void alienHitSound(){ alienHit.Play(0); } //method just to play the alien hit sound effect
+    public void spawnAlien(){ alienSpawner.Spawn(); } //method to spawn aliens from the spawner script.
+
+    private void CollisionsOff(){ this.player.gameObject.layer = LayerMask.NameToLayer("Invincible"); } //changes the players layer to invincible with no collisions
+    private void CollisionsOffGame(){ this.player.gameObject.layer = LayerMask.NameToLayer("InvincibleGame"); }//changes the players layer to invincible with no collisions but this is modified so it can collide with mothership and bullets.
+    private void CollisionsOn(){ this.player.gameObject.layer = LayerMask.NameToLayer("Player"); }//changes layer mask back to player so that all collisions are activated again.
+
+    private void diffIncOn(){ diffIncreaseUI.SetActive(true); } //turns UI for difficulty on
+    private void diffIncOff(){ diffIncreaseUI.SetActive(false); } //turns UI for difficulty off
+
+    private void aliensFoundOn(){ aliensFoundYouUI.SetActive(true); } //turns UI for aliens finding you on
+    private void aliensFoundOff(){ aliensFoundYouUI.SetActive(false); } //turns UI for aliens finding you off
+
+    private void alienAlertOn(){ beeping.Play(); alienAlertUI.SetActive(true); } //turns UI for swarm mode activating on
+    private void alienAlertOff(){ alienAlertUI.SetActive(false); } //turns the swarm mode activation UI off
+
+    private void mothershipAlertOn(){ mothershipAlertUI.SetActive(true); mothershipHealth.SetActive(true);} //turns the mothership mission starting UI alert on
+    private void mothershipAlertOff(){ mothershipAlertUI.SetActive(false); } //turns the mothership mission starting UI alert off
+
+    private void mothershipWonOn(){ mothershipWonUI.SetActive(true); } //turns the UI to show that you beat the mothership on
+    private void mothershipWonOff(){ mothershipWonUI.SetActive(false); } //turns the UI to show that you beat the mothership off
+   
+}
+
+
+
+
+
+
+
+
+
+////////////////////////////////////// Asteroid Spawn . CS ////////////////////////////////////////////////////
+
+
+
+
+
+
+
+
+
+//This is the code that works the spawning mechanics for the asteroids, created by Sam Nuttall for my asteroids game for COMP222
+//this code manages how the asteroids are spawned in within the game.
+
+using UnityEngine;
+
+public class AsteroidSpawn : MonoBehaviour {
+
+    //initialising link to the asteroid prefab and the game manager script.
+    public Asteroid asteroidPrefab; 
+    public GameManager GameManage;
+    
+    //initialise the attribute variables with set values.
+    public float trajectoryVariance = 15.0f;
+    public float spawnRate = 2.0f;
+    public float spawnDistance = 10.0f;
+    public int spawnAmount = 1;
+
+    
+    //when the scene is first started the function spawn is started and runs at regular intervals, this interval being the spawnRate given in the top.
+    private void Start(){
+        Invoke(nameof(Spawn), this.spawnRate);
+    }
+
+    //changes the attribute variable values based on the difficulty level of the game, this makes it harder as the difficulty increases.
+    private void Update(){
+        if (GameManage.difficultyLevel == 1){
+            this.spawnAmount = 1;
+            this.spawnRate = 2.0f;
+        }
+        if (GameManage.difficultyLevel == 2){
+            this.spawnAmount = 1;
+            this.spawnRate = 1.25f;
+        }
+        if (GameManage.difficultyLevel == 3){
+            this.spawnAmount = 2;
+            this.spawnRate = 2.0f;
+        }
+    }
+
+    //for the given spawn amount, that many asteroids will be instantiated and float into the field at the given angle and from the given spawn point. the direction they fly in at is random but always TOWARDS the field. and the asteroid size is randomised within a set range. speed is also changed based on the size so some arent too fast or slow.
+    private void Spawn(){
+        for (int i = 0; i < this.spawnAmount; i++){
+            Vector3 spawnDirection = Random.insideUnitCircle.normalized * this.spawnDistance;
+            Vector3 spawnPoint = this.transform.position + spawnDirection;
+
+            float variance = Random.Range(-this.trajectoryVariance, this.trajectoryVariance);
+            Quaternion rotation = Quaternion.AngleAxis(variance, Vector3.forward);
+
+            Asteroid asteroid = Instantiate(this.asteroidPrefab, spawnPoint, rotation);
+            asteroid.size = Random.Range(asteroid.minSize, asteroid.maxSize);
+            
+            if (asteroid.size > 0.5f) {
+                asteroid.speed = 6.0f;
+            }
+
+            asteroid.SetTrajectory(rotation * -spawnDirection);
+        }
+        Invoke(nameof(Spawn), this.spawnRate);
+    }
+
+    
+}
+
+
+
+
+
+
+
+
+
+////////////////////////////////////// Asteroid . CS ////////////////////////////////////////////////////
+
+
+
+
+
+
+
+
+//Code for asteroids, created by Sam Nuttall for my Asteroids game.
+//This C# Scripting code effects the asteroids sprites which is the boulders that go for you in game.
+
+using UnityEngine;
+
+public class Asteroid : MonoBehaviour {  
+
+    //initialise the list of sprite images that the asteroid can pick from when randomly generating. there is 4 different images that the asteroid could possibly be.
+    public Sprite[] sprites;
+    public Asteroid asteroidPrefab;
+    
+    //initialises these variable attributes for the asteroid prefab to take.
+    public float size = 1.0f;
+    public float minSize = 0.3f;
+    public float maxSize = 0.8f;
+    public float speed = 3.0f;
+    public float maxTime = 15.0f;
+    public float respawnInvincibilityTime = 5.0f;
+    public bool spawnedIn = false;
+
+    //initialise the spriterendering and rigidbody for the prefabs.
+    private SpriteRenderer spriteRenderer;
+    private Rigidbody2D rigidBody;
+    
+
+    //fetch the components for sprite renderer and rigidbody.
+    private void Awake(){
+        spriteRenderer = GetComponent<SpriteRenderer>();
+        rigidBody = GetComponent<Rigidbody2D>();
+    }
+
+    //when the asteroid spawns it picks a random sprite from the list of sprites to display as. it picks a rotation angle to fly into the screen at, and its mass is determined based on the size, this effects its speed. for a set time the asteroids are invincible so they can pass through the boundary layer, they are then enabled collisions so they can bounce around inside. smaller asteroids are invincible for less time as they get into the game area fastest.
+    private void Start(){
+        spriteRenderer.sprite = sprites[Random.Range(0, sprites.Length)];
+
+        this.transform.eulerAngles = new Vector3(0.0f, 0.0f, Random.value * 360.0f); //visual rotation of the random asteroid sprite picked from the array of sprites.
+        this.transform.localScale = Vector3.one * this.size;
+
+        rigidBody.mass = this.size; 
+
+        if (this.spawnedIn == false) {
+            this.gameObject.layer = LayerMask.NameToLayer("InvincibleAst");
+            
+            if (this.size < 0.4f) { //gives smaller asteroids less invincibilty time as they travel onto the game field faster, so we dont want them to fly straight through.
+                Invoke(nameof(CollisionsOn), (this.respawnInvincibilityTime / 1.5f));
+            }else{
+                Invoke(nameof(CollisionsOn), this.respawnInvincibilityTime);
+            }
+            this.spawnedIn = true;
+        }
+    }
+
+
+    //method that changes the asteroid layer so that collisions are enabled
+    private void CollisionsOn(){
+        rigidBody.gameObject.layer = LayerMask.NameToLayer("Asteroid");
+    }
+
+
+    //adds force in the randomly picked direction from the other method and then this makes the asteroid move in that direction, the asteroid is the deleted after a maximum lifetime in the scene.
+    public void SetTrajectory(Vector2 direction){
+        rigidBody.AddForce(direction * this.speed);
+        Destroy(this.gameObject, this.maxTime);
+    }
+   
+
+    //collision reaction methods for the asteroid, if it collides with a bullet then the asteroid is either destroyed or it creates a split , which means that there is a random number of smaller asteroids generated out of the one destroyed one, 2-6 asteroids can be created in the split, this is randomly generated.
+    private void OnCollisionEnter2D(Collision2D collision){
+        if (collision.gameObject.tag == "Bullet"){
+            if ((this.size * 0.525f) >= this.minSize){
+                for (int i = 0; i < Random.Range(2,4); i++) 
+                    createSplit();
+            }
+
+            FindObjectOfType<GameManager>().asteroidDead(this); //the asteroidDead function plays the explosion sound and removes the original asteroid.
+            Destroy(this.gameObject);
+        }
+    }
+
+
+    //method for creating the smaller asteroid splits, this picks a position in a circle around the destroyed asteroids location and then instantiates a new asteroid in this area with a new random direction and speed given and a new lifetime, there is also a grace period of no collisions so they dont instantly collide with each other.
+    private void createSplit(){
+        Vector2 position = this.transform.position;
+        position = position + (Random.insideUnitCircle * 1.25f);
+        Asteroid half = Instantiate(this.asteroidPrefab, position, this.transform.rotation);
+        half.gameObject.layer = LayerMask.NameToLayer("Asteroid");
+        half.spawnedIn = true;
+        half.size = this.size * 0.66f;
+        half.SetTrajectory(Random.insideUnitCircle.normalized * this.speed);
+        
+    }
+
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+////////////////////////////////////// Player . CS ////////////////////////////////////////////////////
+
+
+
+
+
+
+
+//Code for player movement, created by Sam Nuttall for my Asteroids game.
+//This C# Scripting code effects the player sprite which is the ship in game.
+
+using UnityEngine;
+
+public class Player : MonoBehaviour {
+
+    //initialise the bullet prefab that will be used when instantiating bullets.
+    public Bullet bulletPrefab;
+
+    //variables for the movement
+    private bool Forward;
+    private bool Backward;
+    private float Turn;
+
+    //variables the attributes of the player movement mechanics.
+    public float ForwardSpeed = 1.0f;
+    public float BackwardSpeed = 1.0f;
+    public float TurnSpeed = 1.0f;
+    public float fireRate = 0.175f;
+    private float lastShot = 0.0f;
+
+    //audio sources storing the death sound and the shooting sound effects.
+    public AudioSource shootingSound;
+    public AudioSource deathSound;
+
+    //declaring the variable which will store the rigidbody component
+    private Rigidbody2D rigidBody;
+
+    //fetches the rigidbody component when the player is first instantiated.
+    private void Awake(){
+        rigidBody = GetComponent<Rigidbody2D>();
+    }
+
+    //constantly checking the user input. if there is user input then it will run functions based off which key it is. WASD control movement and turning and spacebar or left-click will run the shoot method.
+    private void Update(){
+        Forward = Input.GetKey(KeyCode.W) || Input.GetKey(KeyCode.UpArrow);
+        Backward = Input.GetKey(KeyCode.S) || Input.GetKey(KeyCode.DownArrow);
+    
+        if (Input.GetKey(KeyCode.A) || Input.GetKey(KeyCode.LeftArrow)){
+            Turn = 1.0f;
+        }else if (Input.GetKey(KeyCode.D) || Input.GetKey(KeyCode.RightArrow)){
+            Turn = -1.0f;
+        }else {
+            Turn = 0;
+        }
+
+        if (Input.GetKeyDown(KeyCode.Space) || Input.GetMouseButtonDown(0)){
+            Shooting();
+        }
+    }
+
+    //if the movement is forward then there is a forward force applied to the user in the direction they are facing, at a given speed. the user has drag also so they can decelerate etc. backword movement adds more drag to show deceleration. and the turn variable is used to add torque to the user, which changes their rotation.
+    private void FixedUpdate(){ //This runs after fixed times
+        if (Forward) {
+            rigidBody.drag = 1;
+            rigidBody.AddForce(this.transform.up * this.ForwardSpeed);
+        }else if (Backward) {
+            rigidBody.drag = 3;
+        }
+        if (Turn != 0.0f) {
+            rigidBody.AddTorque(Turn * this.TurnSpeed);
+        }
+    }
+
+    //method for instantiating the bullet when the user shoots, this will spawn the bullet and then pass the 'forward' direction to the shoot method to add movement in this direction to the bullet, the bullet shooting sfx is also played.
+    private void Shooting(){
+        if (Time.time > fireRate + lastShot){
+            Bullet bullet = Instantiate(this.bulletPrefab, this.transform.position, this.transform.rotation);
+            bullet.Shoot(this.transform.up);
+            shootingSound.Play(0);
+            lastShot = Time.time;
+        }  
+    }
+    
+    //if the player collides with an asteroid, then the explosion sound plays and the game object is deactivated. the playerdead function is ran.
+    private void OnCollisionEnter2D(Collision2D collision){
+        if (collision.gameObject.tag == "Asteroid"){
+            rigidBody.velocity = Vector3.zero;
+            rigidBody.angularVelocity = 0.0f;
+            deathSound.Play(0);
+            this.gameObject.SetActive(false);
+
+            FindObjectOfType<GameManager>().playerDead();
+        }
+        // if the player collides with a mothership then the same happens.
+        if (collision.gameObject.tag == "Mothership"){
+            rigidBody.velocity = Vector3.zero;
+            rigidBody.angularVelocity = 0.0f;
+            deathSound.Play(0);
+            this.gameObject.SetActive(false);
+            
+            FindObjectOfType<GameManager>().playerDead();
+        }
+        //if the player collides with an alien bullet they also die and the sfx is played again, all the alien bullets are removed from the scene, and then the playerDead function is ran again.
+        if (collision.gameObject.tag == "AlienBullet"){
+            rigidBody.velocity = Vector3.zero;
+            rigidBody.angularVelocity = 0.0f;
+            deathSound.Play(0);
+            this.gameObject.SetActive(false);
+
+            alienBullet[] alien = FindObjectsOfType<alienBullet>();
+
+            for (int i = 0; i < alien.Length; i++) {
+                Destroy(alien[i].gameObject);
+            }
+
+            FindObjectOfType<GameManager>().playerDead();
+        }
+
+        if (collision.gameObject.tag == "Missile"){
+            rigidBody.velocity = Vector3.zero;
+            rigidBody.angularVelocity = 0.0f;
+            deathSound.Play(0);
+            this.gameObject.SetActive(false);
+
+            Rockets[] missiles = FindObjectsOfType<Rockets>();
+
+            for (int i = 0; i < missiles.Length; i++) {
+                FindObjectOfType<GameManager>().missilesExplode(missiles[i]);
+            }
+
+            FindObjectOfType<GameManager>().playerDead();
+        }
+    }
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+////////////////////////////////////// Bullet . CS ////////////////////////////////////////////////////
+
+
+
+
+
+
+
+//Code for bullet movement, created by Sam Nuttall for my Asteroids game.
+//This C# Scripting code effects the bullet sprite which is the laser that is shot in game.
+
+using UnityEngine;
+
+public class Bullet : MonoBehaviour {
+
+    //initialise variables which will be attributes of the players bullet. the speed and the max lifetime of the bullet on the game.
+    public float speed = 500.0f;
+    public float maxTime = 5.0f;
+
+    private Rigidbody2D rigidBody;
+
+    //when the bullet is instantiated the rigidBody is fetched as the component of the prefab.
+    private void Awake(){
+        rigidBody = GetComponent<Rigidbody2D>();
+    }
+
+    //shoot method for the bullet. Adds force to the bullet in the direction that is used as the input and then destroys the bullet after given time travelling in that direction.
+    public void Shoot(Vector2 direction){
+        rigidBody.AddForce(direction * this.speed);
+        Destroy(this.gameObject, this.maxTime);
+    }
+
+    //if the bullet collides with anything then this method destroys the bullet, no matter what it collides with.
+    private void OnCollisionEnter2D(Collision2D collision){
+        Destroy(this.gameObject);
+    }
+
+}
+
+
+
+
+
+
+
+
+
+
+
+
+////////////////////////////////////// Alien Spawner . CS ////////////////////////////////////////////////////
+
+
+
+
+
+
+
+
+using System.Collections;
+using System.Collections.Generic;
+using UnityEngine;
+
+public class AlienSpawner : MonoBehaviour {
+    
+    //initialise the alienPrefab from the alienAI script
+    public AlienAI alienPrefab; 
+
+    //initialise the gameManager link.
+    public GameManager GameManage;
+
+    //just one audiosource for when the aliens spawn
+    public AudioSource alienSpawn;
+
+    
+    
+    private void Start(){}
+
+    private void Update(){}
+
+    //the spawn method for the aliens, picks a random Y coordinate and a random X coordinate out of the full size of the screen width and height and then set this as the spawn position, then an alien prefab is instantiated at this position and the spawn SFX is played.
+    public void Spawn(){
+        float spawnY = Random.Range
+            (Camera.main.ScreenToWorldPoint(new Vector2(0, 0)).y, Camera.main.ScreenToWorldPoint(new Vector2(0, Screen.height)).y);
+        float spawnX = Random.Range
+            (Camera.main.ScreenToWorldPoint(new Vector2(0, 0)).x, Camera.main.ScreenToWorldPoint(new Vector2(Screen.width, 0)).x);
+ 
+        Vector2 spawnPosition = new Vector2(spawnX, spawnY);
+        AlienAI alien = Instantiate(this.alienPrefab, spawnPosition, Quaternion.identity);
+
+        alienSpawn.Play(0);
+    }
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+////////////////////////////////////// AlienAI . CS ////////////////////////////////////////////////////
+
+
+
+
+
+
+
+
+
+using System.Collections;
+using System.Collections.Generic;
+using UnityEngine;
+
+public class AlienAI : MonoBehaviour {
+
+    //initialises the gameManager link.
+    public GameManager GameManage;
+
+    public Sprite[] sprites;
+    
+    private SpriteRenderer spriteRenderer;
+    private Rigidbody2D rigidBody;
+
+    //initialise the prefab links for the alienBullet, the player and the alien model.
+    public alienBullet alienBulletPrefab;
+    public GameObject player;
+    public AlienAI alienPrefab; 
+
+    //a range of variable initialisations for variables that will be changed throughout the code / manage the behaviour of the alien.
+    private Vector2 randomMovement;
+    public float speed;
+    private float distance;
+    public float followDistance;
+    public float freeSpace;
+    public float accelerationTime;
+    public float maxSpeed;
+    private float timeLeft;
+    private int alienHits = 0;
+    
+
+    //initiailes a variable which refers to the sprite renderer and rigidbody of the prefab initialised.
+    private void Awake(){
+        spriteRenderer = GetComponent<SpriteRenderer>();
+        rigidBody = GetComponent<Rigidbody2D>();
+    }
+
+
+    //when the prefab is first initialised it will located the 'Player' named prefab and then invoke a repeating function of the alienShoot method every 5 seconds.
+    void Start(){
+        spriteRenderer.sprite = sprites[Random.Range(0, sprites.Length)];
+        player = GameObject.Find("Player");
+        InvokeRepeating(nameof(alienShoot), 5.0f, 5.0f);//shoots every 5 seconds.
+    }
+
+
+    //collison reaction methods for the aliens, if the alien collides with a 'Bullet' tagged object then the hits counter is incremented and the alien hit sound effect is played. if the alien has been hit 2 times then it dies and the alienDead method is ran.
+    private void OnCollisionEnter2D(Collision2D collision){
+        if (collision.gameObject.tag == "Bullet"){
+
+            rigidBody.velocity = new Vector3(0,0,0);
+
+            this.alienHits = this.alienHits + 1;
+
+            if (this.alienHits <= 2){
+                Destroy(collision.gameObject);
+                FindObjectOfType<GameManager>().alienHitSound();
+            }
+            if (this.alienHits == 3) {
+            Destroy(collision.gameObject);
+            FindObjectOfType<GameManager>().alienDead(this);
+            Destroy(this.gameObject);
+            }
+        }
+    }
+
+
+    //the alien will always be seeking the player Object, if they die and then respawn then the alien will instantly find the new player prefab. find the distance between the alien and the user at any given time and then has the alien move towards the users location, if the alien gets too close then it will go on a flying loopw here it just flies around in a set area. then continue to follow when the user moves away.
+    void Update(){
+        player = GameObject.Find("Player"); // added this code here too because there was a bug where if the alien spawned as a player is dead then the player is not passed onto the alien script.
+        
+        distance = Vector2.Distance(transform.position, player.transform.position);
+        Vector2 direction = player.transform.position - transform.position;
+
+        if (distance > followDistance) {
+            rigidBody.velocity = new Vector3(0,0,0);
+            transform.position = Vector2.MoveTowards(this.transform.position, player.transform.position, speed * Time.deltaTime); 
+        }
+
+        if (freeSpace < distance && distance < followDistance) {
+            flyAround();
+        }
+
+    }
+
+
+    //method for the alien shooting, find the angle that the player is away from the alien and instantiates a bullet prefab that moves in this direction at a given speed. similar to the player shoot method.
+    private void alienShoot(){
+        Vector2 playerPosition = player.transform.position;
+        Vector2 enemyPosition = this.transform.position;
+        Vector2 playerShotAngle = playerPosition - enemyPosition;
+        playerShotAngle.Normalize();
+        
+        alienBullet alienBullet = Instantiate(this.alienBulletPrefab, this.transform.position, this.transform.rotation);
+        alienBullet.shotFromAlien = 1;
+        alienBullet.alienShoot(playerShotAngle);
+    }
+
+
+    //method that is called when the alien is to just fly around when too close to the user. picks a random movement direction and then flies in this direction at a set speed for a set amount of time, and then it changes the direction and moves again for a set time. as soon as the user is moved far enough away this method wont run and the alien will follow the player again.
+    private void flyAround(){
+        timeLeft -= Time.deltaTime;
+        if (timeLeft <= 0){
+            randomMovement = new Vector2(Random.Range(-1f, 1f), Random.Range(-1f, 1f));
+            timeLeft += accelerationTime;
+            rigidBody.AddForce(randomMovement * maxSpeed);
+        }
+    }
+
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+////////////////////////////////////// alienBullet . CS ////////////////////////////////////////////////////
+
+
+
+
+
+
+
+
+
+
+
+
+
+using System.Collections;
+using System.Collections.Generic;
+using UnityEngine;
+
+public class alienBullet : MonoBehaviour {
+
+    //initialising basic variables controlling bullet.
+    public float speed = 100.0f;
+    public float alienBulletLifetime = 5.0f;
+    public int shotFromAlien = 0;
+
+    //initialising prefabs
+    public Mothership mothership;
+
+    public Rigidbody2D rigidBody;
+    //fetches rigidBody of the prefab instantiated.
+    private void Awake(){
+        rigidBody = GetComponent<Rigidbody2D>();
+    }
+    
+    //method for the alien shooting, this adds force in the direction of the input and then destroys the bullet after a set time (the value of variable at the top)
+    public void alienShoot(Vector2 direction){
+        rigidBody.AddForce(direction * this.speed);
+        Destroy(this.gameObject, this.alienBulletLifetime);
+    }
+
+    //method for reactions to collisions, if the collision is with a object with the 'player' mask then the player death SFX is played and the playerDead() method in the gameManager is ran. bullet is also destroyed.
+    private void OnCollisionEnter2D(Collision2D collision){
+        if (collision.gameObject.tag == "Player"){
+            FindObjectOfType<Player>().deathSound.Play(0);
+            FindObjectOfType<GameManager>().playerDead();
+            Destroy(this.gameObject, 0);
+        }  
+        if (collision.gameObject.tag == "Boundary" && this.shotFromAlien == 1) {
+            Destroy(this.gameObject, 0);
+        }
+    }
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+////////////////////////////////////// MothershipSpawn . CS ////////////////////////////////////////////////////
+
+
+
+
+
+
+
+
+
+
+
+
+
+using System.Collections;
+using System.Collections.Generic;
+using UnityEngine;
+
+public class MothershipSpawn : MonoBehaviour {
+
+    //initialise the mothership prefab link.
+    public Mothership mothershipPrefab; 
+
+    //initialise the game Manager link.
+    public GameManager GameManage;
+
+    //initialise the variables which store the sprite renderer and the rigidbody components of the prefab.
+    private SpriteRenderer spriteRenderer;
+    private Rigidbody2D rigidBody;
+    
+    //when the mothership spawn script is first accessed the components are fetched and stored in the variables that are declared above.
+    private void Awake(){
+        spriteRenderer = GetComponent<SpriteRenderer>();
+        rigidBody = GetComponent<Rigidbody2D>();
+    }
+    
+    void Start(){
+    }
+
+    private void Update(){
+    }
+
+    //the spawn method for the mothership. picks a random point on the X axis of the screen and instantiates a new mothership prefab, it will be at a set Y axis height so that its at the bottom of the screen.
+    public void Spawn(){
+        float spawnY = Camera.main.ScreenToWorldPoint(new Vector2(0, 90)).y;
+        float spawnX = Random.Range
+            (Camera.main.ScreenToWorldPoint(new Vector2(0, 0)).x, Camera.main.ScreenToWorldPoint(new Vector2(Screen.width, 0)).x);
+        Vector2 spawnPosition = new Vector2(spawnX, spawnY);
+
+        Mothership mothership = Instantiate(this.mothershipPrefab, spawnPosition, Quaternion.identity);
+    }
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+////////////////////////////////////// Mothership . CS ////////////////////////////////////////////////////
+
+
+
+
+
+
+
+using System.Collections;
+using System.Collections.Generic;
+using UnityEngine;
+
+public class Mothership : MonoBehaviour {
+
+    //initialising the sprite renderer and rigidBody for the gameObject.
+    private SpriteRenderer spriteRenderer;
+    private Rigidbody2D rigidBody;
+    
+    //initialise alienBullet Rockets and player prefab object.
+    public GameManager gameManage;
+    public alienBullet alienBulletPrefab;
+    public Rockets missilePrefab;
+    public GameObject player;
+
+    //initialise variables that will be changed in code.
+    public int mothershipHits = 0;
+    public int mothershipBulletLifetime = 2;
+    public int shooting = 0;
+    public float missileSpeed = 2.0f;
+    
+    //just a vector that will be used to change the size of the mothership bullet as it uses the same prefab as the alienbullet.
+    private Vector3 scaleChange;
+
+    
+
+    private void Awake(){
+        spriteRenderer = GetComponent<SpriteRenderer>();
+        rigidBody = GetComponent<Rigidbody2D>();
+        rigidBody.isKinematic = true; //means the object is not effected by forces and is still, only effected by transform functions.
+    }
+
+    //when the mothership is first instantiated it will begin shooting after 6 seconds.
+    void Start() {
+        Invoke(nameof(mothershipShootMissile), 2.25f);
+        Invoke(nameof(mothershipShootMissile), 3.75f);
+        Invoke(nameof(mothershipShooting), 6.0f);
+    }
+
+    //if the mothership is not in the shooting mode then it will follow the users X coordinate, this keeps the mothership at the bottom of the screen but always in line with the user.
+    void Update() {
+        if (this.shooting != 1){
+            Vector2 currentPosition = (Vector2)transform.position;
+            Vector2 targetPosition = new Vector2(GameObject.Find("Player").transform.position.x, currentPosition.y);
+ 
+            transform.position = Vector2.MoveTowards(currentPosition, targetPosition, Time.deltaTime * 2.5f);
+        }
+        
+        Rockets[] missiles = FindObjectsOfType<Rockets>();
+        for (int i = 0; i < missiles.Length; i++) {
+            player = GameObject.Find("Player"); 
+            missiles[i].transform.position = Vector2.MoveTowards(missiles[i].transform.position, player.transform.position, missileSpeed * Time.deltaTime);
+            Vector2 direction = player.transform.position - missiles[i].transform.position;
+            direction.Normalize();
+            float angle = Mathf.Atan2(direction.y, direction.x) * Mathf.Rad2Deg;       
+            missiles[i].transform.rotation = Quaternion.Euler(Vector3.forward * (angle + 270.0f));
+        }
+        
+    }
+
+
+    //collision reaction method for the mothership. if a bullet collides then the hits counter is incremented, and passed through to the mothershipHits method in the gameManager. if its the player then they will die, and if the hitCounter is 100 then the mothership dies and the mothershipDead method will run.
+    private void OnCollisionEnter2D(Collision2D collision){
+        if (collision.gameObject.tag == "Bullet"){
+            if (this.mothershipHits < 100){
+                mothershipHits += 1;
+                FindObjectOfType<GameManager>().mothershipHits(mothershipHits);
+            }
+        }
+        if (collision.gameObject.tag == "InvincibleGame"){
+            FindObjectOfType<Player>().deathSound.Play(0);
+            FindObjectOfType<GameManager>().playerDead();
+        }
+            
+        if (this.mothershipHits == 100) {
+            FindObjectOfType<GameManager>().mothershipDied(this);
+            Destroy(this.gameObject);
+        }
+    }
+    
+    //method to set the motherships active mode to 'shooting' which means it wont move but will instead shoot. invokes the actual shoot method.
+    private void mothershipShooting(){
+        this.shooting = 1;
+        Invoke(nameof(mothershipShoot), 1.25f);
+    }
+   
+    //method to control the motherships shooting mechanic. spawns a alienBullet prefab and scales it to be large enough to fill the screen vertically (as i wanted it to imitate a big laser beam), the bullet will be destroyed after a couple seconds and then the shooting function will be ran again in a few seconds so there is a constant loop of shooting at set intervals.
+    private void mothershipShoot(){
+        alienBullet mothershipBullet = Instantiate(this.alienBulletPrefab, this.transform.position, this.transform.rotation);
+        FindObjectOfType<GameManager>().beamShot.Play();
+        scaleChange = new Vector3(0.0f, 300.0f, 0.0f);
+        mothershipBullet.rigidBody.isKinematic = true;
+        mothershipBullet.transform.localScale += scaleChange;
+        Destroy(mothershipBullet.gameObject, this.mothershipBulletLifetime);
+        Invoke(nameof(enableMothership), this.mothershipBulletLifetime);
+    }
+
+    private void mothershipShootMissile(){
+        Rockets missile = Instantiate(this.missilePrefab, this.transform.position + new Vector3(0.0f, 1.0f, 0.0f), this.transform.rotation);
+        FindObjectOfType<GameManager>().missileShot.Play();
+        StartCoroutine(explodeMissile(missile));
+    }
+
+    IEnumerator explodeMissile(Rockets missile)
+    {
+        yield return new WaitForSeconds(10);
+        FindObjectOfType<GameManager>().missilesExplode(missile);
+    }
+
+    //method to re-enable the motherships movement when the shooting is done. this means that during the time it is not shooting it is tracking the users position again along the X axis.
+    void enableMothership(){
+        this.shooting = 0;
+        Invoke(nameof(mothershipShootMissile), 2.25f);
+        Invoke(nameof(mothershipShootMissile), 3.75f);
+        Invoke(nameof(mothershipShooting), 6.0f);
+    }
+    
+}
+
+
+
+
+
+
+
+
+
+
+
+////////////////////////////////////// Rockets . CS ////////////////////////////////////////////////////
+
+
+
+
+
+
+
+using System.Collections;
+using System.Collections.Generic;
+using UnityEngine;
+
+public class Rockets : MonoBehaviour{
+    void Start(){}
+
+    void Update(){}
+
+    private void OnCollisionEnter2D(Collision2D collision){
+
+        if (collision.gameObject.tag == "Bullet"){
+            FindObjectOfType<GameManager>().SetScore(FindObjectOfType<GameManager>().score + 1);
+            FindObjectOfType<GameManager>().missilesExplode(this);
+        }
+    }
+}
